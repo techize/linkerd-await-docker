@@ -15,13 +15,25 @@ This repository provides a containerized version of linkerd-await, which is a co
 
 ## Usage
 
+### Pre-built Images
+
+Images are automatically built and published to GitHub Container Registry:
+
+```bash
+# Pull the latest image
+docker pull ghcr.io/techize/linkerd-await-docker:latest
+
+# Pull a specific version
+docker pull ghcr.io/techize/linkerd-await-docker:v0.3.1
+```
+
 ### Building Locally
 
 ```bash
 # Build the image
 docker build --build-arg LINKERD_AWAIT_VERSION=v0.3.1 -t linkerd-await:v0.3.1 .
 
-# Or use the build script
+# Or use the build script for ECR
 ./build.sh
 ```
 
@@ -29,12 +41,12 @@ docker build --build-arg LINKERD_AWAIT_VERSION=v0.3.1 -t linkerd-await:v0.3.1 .
 
 ```bash
 # Basic usage
-docker run --rm linkerd-await:v0.3.1 --help
+docker run --rm ghcr.io/techize/linkerd-await-docker:latest --help
 
 # In Kubernetes as an init container
 containers:
   - name: linkerd-await
-    image: 398878272913.dkr.ecr.eu-west-1.amazonaws.com/linkerd-await:v0.3.1
+    image: ghcr.io/techize/linkerd-await-docker:v0.3.1
     command: ["cp"]
     args: ["/usr/local/bin/linkerd-await", "/shared/linkerd-await"]
     volumeMounts:
