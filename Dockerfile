@@ -31,7 +31,11 @@ if [[ "$1" == "--" ]]; then
     # Wait for linkerd proxy to be ready first (if available)
     if [[ -n "$SHUTDOWN_MODE" ]] && curl -s http://localhost:4191/ready > /dev/null 2>&1; then
         echo "Linkerd proxy detected, waiting for readiness..."
-        /linkerd-await-original --timeout=60s -- echo "Linkerd ready"
+        if [[ -x "/linkerd-await-original" ]]; then
+            /linkerd-await-original --timeout=60s -- echo "Linkerd ready"
+        else
+            echo "Warning: Original linkerd-await binary not found, skipping readiness check"
+        fi
     fi
 
     # Execute the main command
@@ -40,7 +44,12 @@ if [[ "$1" == "--" ]]; then
     MAIN_PID=$!
 else
     # Call original linkerd-await if we're not being used as wrapper
-    exec /linkerd-await-original "$@"
+    if [[ -x "/linkerd-await-original" ]]; then
+        exec /linkerd-await-original "$@"
+    else
+        echo "Error: Original linkerd-await binary not found at /linkerd-await-original"
+        exit 1
+    fi
 fi
 
 # Wait for main process to complete
@@ -70,9 +79,11 @@ fi
 exit $EXIT_CODE
 EOF
 
-# Make wrapper script replace the original linkerd-await
-RUN mv /linkerd-await /linkerd-await-original && \
-    mv /linkerd-await-wrapper.sh /linkerd-await
+# Make wrapper script replace the original linkerd-await, and ensure it's executable
+RUN cp /linkerd-await /linkerd-await-original && \
+    mv /linkerd-await-wrapper.sh /linkerd-await && \
+    chmod +x /linkerd-await && \
+    chmod +x /linkerd-await-original
 
 # Create non-root user
 RUN adduser -D -s /bin/sh linkerd-await
