@@ -16,7 +16,28 @@ RUN curl -sSLo /linkerd-await \
 # Create wrapper script for proper shutdown handling
 RUN cat > /linkerd-await-wrapper.sh << 'EOF' && chmod +x /linkerd-await-wrapper.sh
 #!/bin/bash
-set -e
+# Disable exit on error for shutdown logic
+set +e
+
+# Function to handle shutdown
+shutdown_linkerd() {
+    echo "Attempting linkerd proxy shutdown..."
+
+    # Try HTTP shutdown endpoint
+    if curl -s -X POST http://localhost:4191/shutdown > /dev/null 2>&1; then
+        echo "Linkerd proxy shutdown via HTTP endpoint successful"
+        sleep 3
+    else
+        echo "HTTP shutdown failed, trying alternative methods..."
+        # Send SIGTERM to linkerd-proxy processes
+        pkill -TERM linkerd-proxy 2>/dev/null && echo "Sent SIGTERM to linkerd-proxy" || echo "No linkerd-proxy processes found"
+        sleep 5
+    fi
+    echo "Shutdown attempts completed"
+}
+
+# Trap to ensure shutdown runs even if script is killed
+trap 'shutdown_linkerd; exit 130' INT TERM
 
 # Check if we should do linkerd shutdown
 SHUTDOWN_MODE=""
@@ -28,55 +49,30 @@ fi
 # If we have arguments after "--", we're being used as a wrapper
 if [[ "$1" == "--" ]]; then
     shift
-    # Wait for linkerd proxy to be ready first (if available)
-    if [[ -n "$SHUTDOWN_MODE" ]] && curl -s http://localhost:4191/ready > /dev/null 2>&1; then
-        echo "Linkerd proxy detected, waiting for readiness..."
-        if [[ -x "/linkerd-await-original" ]]; then
-            /linkerd-await-original --timeout=60s -- echo "Linkerd ready"
-        else
-            echo "Warning: Original linkerd-await binary not found, skipping readiness check"
-        fi
-    fi
 
     # Execute the main command
     echo "Executing main command: $*"
-    exec "$@" &
+    "$@" &
     MAIN_PID=$!
-else
-    # Call original linkerd-await if we're not being used as wrapper
-    if [[ -x "/linkerd-await-original" ]]; then
-        exec /linkerd-await-original "$@"
+
+    # Wait for main process to complete
+    wait $MAIN_PID
+    EXIT_CODE=$?
+    echo "Main process completed with exit code: $EXIT_CODE"
+
+    # Always attempt shutdown if linkerd proxy is detected
+    if [[ -n "$SHUTDOWN_MODE" ]] || curl -s http://localhost:4191/ready > /dev/null 2>&1; then
+        shutdown_linkerd
     else
-        echo "Error: Original linkerd-await binary not found at /linkerd-await-original"
-        exit 1
+        echo "No linkerd proxy detected or shutdown not requested"
     fi
-fi
 
-# Wait for main process to complete
-wait $MAIN_PID
-EXIT_CODE=$?
-echo "Main process completed with exit code: $EXIT_CODE"
-
-# Always attempt linkerd proxy shutdown when running in a sidecar environment
-if [[ -n "$SHUTDOWN_MODE" ]] || curl -s http://localhost:4191/ready > /dev/null 2>&1; then
-    echo "Attempting linkerd proxy shutdown..."
-
-    # Try multiple shutdown approaches
-    if curl -s -X POST http://localhost:4191/shutdown > /dev/null 2>&1; then
-        echo "Linkerd proxy shutdown via HTTP endpoint successful"
-        sleep 2  # Give it time to shutdown
-    else
-        echo "HTTP shutdown failed, trying alternative methods..."
-        # Send SIGTERM to any linkerd-proxy processes
-        pkill -TERM linkerd-proxy 2>/dev/null || true
-        sleep 5
-        echo "Shutdown attempts completed"
-    fi
+    exit $EXIT_CODE
 else
-    echo "No linkerd proxy detected or shutdown not requested"
+    # If not being used as wrapper, just pass through (shouldn't happen in our case)
+    echo "Direct call - this shouldn't happen in our setup"
+    exit 1
 fi
-
-exit $EXIT_CODE
 EOF
 
 # Make wrapper script replace the original linkerd-await, and ensure it's executable
