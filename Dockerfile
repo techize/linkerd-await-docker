@@ -25,16 +25,23 @@ if [[ "$1" == "--shutdown" ]]; then
     shift
 fi
 
-# Wait for linkerd proxy to be ready first (if available)
-if [[ -n "$SHUTDOWN_MODE" ]] && curl -s http://localhost:4191/ready > /dev/null 2>&1; then
-    echo "Linkerd proxy detected, waiting for readiness..."
-    /linkerd-await --timeout=60s -- echo "Linkerd ready"
-fi
+# If we have arguments after "--", we're being used as a wrapper
+if [[ "$1" == "--" ]]; then
+    shift
+    # Wait for linkerd proxy to be ready first (if available)
+    if [[ -n "$SHUTDOWN_MODE" ]] && curl -s http://localhost:4191/ready > /dev/null 2>&1; then
+        echo "Linkerd proxy detected, waiting for readiness..."
+        /linkerd-await-original --timeout=60s -- echo "Linkerd ready"
+    fi
 
-# Execute the main command
-echo "Executing main command: $*"
-exec "$@" &
-MAIN_PID=$!
+    # Execute the main command
+    echo "Executing main command: $*"
+    exec "$@" &
+    MAIN_PID=$!
+else
+    # Call original linkerd-await if we're not being used as wrapper
+    exec /linkerd-await-original "$@"
+fi
 
 # Wait for main process to complete
 wait $MAIN_PID
@@ -69,5 +76,8 @@ RUN adduser -D -s /bin/sh linkerd-await
 # Use non-root user
 USER linkerd-await
 
-# Set entrypoint to wrapper script
-ENTRYPOINT ["/linkerd-await-wrapper.sh"]
+# Make wrapper script replace the original linkerd-await
+RUN mv /linkerd-await /linkerd-await-original && \
+    mv /linkerd-await-wrapper.sh /linkerd-await
+
+ENTRYPOINT ["/linkerd-await"]
