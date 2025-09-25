@@ -41,17 +41,23 @@ wait $MAIN_PID
 EXIT_CODE=$?
 echo "Main process completed with exit code: $EXIT_CODE"
 
-# If shutdown mode enabled, try to gracefully shutdown linkerd proxy
-if [[ -n "$SHUTDOWN_MODE" ]]; then
+# Always attempt linkerd proxy shutdown when running in a sidecar environment
+if [[ -n "$SHUTDOWN_MODE" ]] || curl -s http://localhost:4191/ready > /dev/null 2>&1; then
     echo "Attempting linkerd proxy shutdown..."
 
     # Try multiple shutdown approaches
     if curl -s -X POST http://localhost:4191/shutdown > /dev/null 2>&1; then
         echo "Linkerd proxy shutdown via HTTP endpoint successful"
+        sleep 2  # Give it time to shutdown
     else
-        echo "HTTP shutdown failed, waiting for grace period..."
+        echo "HTTP shutdown failed, trying alternative methods..."
+        # Send SIGTERM to any linkerd-proxy processes
+        pkill -TERM linkerd-proxy 2>/dev/null || true
         sleep 5
+        echo "Shutdown attempts completed"
     fi
+else
+    echo "No linkerd proxy detected or shutdown not requested"
 fi
 
 exit $EXIT_CODE
