@@ -8,9 +8,10 @@ RUN apk --no-cache add ca-certificates curl
 ARG LINKERD_AWAIT_VERSION=v0.3.1
 
 # Download the linkerd-await binary from GitHub releases
-RUN curl -sSLo /usr/local/bin/linkerd-await \
+RUN curl -sSLo /linkerd-await \
     "https://github.com/linkerd/linkerd-await/releases/download/release/${LINKERD_AWAIT_VERSION}/linkerd-await-${LINKERD_AWAIT_VERSION}-amd64" \
-    && chmod +x /usr/local/bin/linkerd-await
+    && chmod +x /linkerd-await \
+    && ln -s /linkerd-await /usr/local/bin/linkerd-await
 
 # Create non-root user
 RUN adduser -D -s /bin/sh linkerd-await
@@ -19,4 +20,4 @@ RUN adduser -D -s /bin/sh linkerd-await
 USER linkerd-await
 
 # Set entrypoint
-ENTRYPOINT ["/usr/local/bin/linkerd-await"]
+ENTRYPOINT ["/linkerd-await"]
