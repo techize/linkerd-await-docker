@@ -70,14 +70,14 @@ fi
 exit $EXIT_CODE
 EOF
 
+# Make wrapper script replace the original linkerd-await
+RUN mv /linkerd-await /linkerd-await-original && \
+    mv /linkerd-await-wrapper.sh /linkerd-await
+
 # Create non-root user
 RUN adduser -D -s /bin/sh linkerd-await
 
 # Use non-root user
 USER linkerd-await
-
-# Make wrapper script replace the original linkerd-await
-RUN mv /linkerd-await /linkerd-await-original && \
-    mv /linkerd-await-wrapper.sh /linkerd-await
 
 ENTRYPOINT ["/linkerd-await"]
